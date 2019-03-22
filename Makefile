@@ -188,15 +188,15 @@ CPPFLAGS = -DBINTOPKGLIBEXECDIR='"'$(shell sh tools/rel.sh $(bindir) $(pkglibexe
 CWARNFLAGS := -Werror -Wall -Wundef -Wmissing-prototypes -Wmissing-declarations -Wstrict-prototypes -Wold-style-definition
 CDEBUGFLAGS := -std=gnu11 -g -fstack-protector $(SANITIZER_FLAGS)
 CFLAGS = $(CPPFLAGS) $(CWARNFLAGS) $(CDEBUGFLAGS) -I $(CCANDIR) $(EXTERNAL_INCLUDE_FLAGS) -I . -I/usr/local/include $(FEATURES) $(COVFLAGS) $(DEV_CFLAGS) -DSHACHAIN_BITS=48 -DJSMN_PARENT_LINKS $(PIE_CFLAGS) $(COMPAT_CFLAGS)
-
+LINK = g++
 # We can get configurator to run a different compile cmd to cross-configure.
 CONFIGURATOR_CC := $(CC)
 
 LDFLAGS = $(PIE_LDFLAGS) $(SANITIZER_FLAGS)
 ifeq ($(STATIC),1)
-LDLIBS = -L/usr/local/lib -Wl,-dn -lgmp -lsqlite3 -lz -Wl,-dy -lm -lpthread -ldl $(COVFLAGS)
+LDLIBS = -L/usr/local/lib -Wl,-dn -levent -lcrypto -lgmp -lsqlite3 -lz -Wl,-dy -lm -lpthread -ldl $(COVFLAGS)
 else
-LDLIBS = -L/usr/local/lib -lm -lgmp -lsqlite3 -lz $(COVFLAGS)
+LDLIBS = -L/usr/local/lib -levent -lcrypto -lm -lgmp -lsqlite3 -lz $(COVFLAGS)
 endif
 
 default: all-programs all-test-programs
@@ -365,7 +365,7 @@ gen_version.h: FORCE
 
 # We force make to relink this every time, to detect version changes.
 tools/headerversions: FORCE tools/headerversions.o $(CCAN_OBJS)
-	@$(LINK.o) tools/headerversions.o $(CCAN_OBJS) $(LOADLIBES) $(LDLIBS) -o $@
+	@$(LINK) tools/headerversions.o $(CCAN_OBJS) $(LOADLIBES) $(LDLIBS) -o $@
 
 # That forces this rule to be run every time, too.
 gen_header_versions.h: tools/headerversions
@@ -385,7 +385,7 @@ $(ALL_TEST_PROGRAMS): %: %.o
 # uses some ccan modules internally).  We want to rely on -lwallycore etc.
 # (as per EXTERNAL_LDLIBS) so we filter them out here.
 $(ALL_PROGRAMS) $(ALL_TEST_PROGRAMS):
-	$(LINK.o) $(filter-out %.a,$^) $(LOADLIBES) $(EXTERNAL_LDLIBS) $(LDLIBS) -o $@
+	$(LINK) $(filter-out %.a,$^) $(LOADLIBES) $(EXTERNAL_LDLIBS) $(LDLIBS) -o $@
 
 # Everything depends on the CCAN headers, and Makefile
 $(CCAN_OBJS) $(CDUMP_OBJS): $(CCAN_HEADERS) Makefile

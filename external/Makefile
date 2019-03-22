@@ -24,7 +24,8 @@ EXTERNAL_INCLUDE_FLAGS :=					\
 	-I external/libwally-core/src/secp256k1/include/	\
 	-I external/jsmn/					\
 	-I external/libbacktrace/				\
-	-I external/libbacktrace-build
+	-I external/libbacktrace-build			\
+	-I external/libbtcrpc/include/
 
 ifneq ($(HAVE_GOOD_LIBSODIUM),1)
 EXTERNAL_INCLUDE_FLAGS += -I external/libsodium/src/libsodium/include
@@ -109,7 +110,7 @@ external-clean:
 	if [ -f external/libsodium/Makefile ]; then make -C external/libsodium clean; fi
 	if [ -f external/libwally-core/Makefile ]; then make -C external/libwally-core clean; fi
 	if [ -f external/ibwally-core/src/Makefile ]; then make -C external/libwally-core/src clean; fi
-	if [ -f external/libbtcprc/Makefile ]; then make -C external/libbtcprc clean; fi
+	if [ -f external/libbtcrpc/Makefile ]; then make -C external/libbtcrpc clean; fi
 
 external-distclean:
 	make -C external/libsodium distclean || true
