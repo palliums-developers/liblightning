@@ -14,3 +14,6 @@
 	path = external/libwally-core
 	url = https://github.com/ElementsProject/libwally-core.git
 	ignore = dirty
+[submodule "external/libbtcrpc"]
+	path = external/libbtcrpc
+	url = https://github.com/gcoinman/libbtcrpc.git
