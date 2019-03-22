@@ -28,6 +28,7 @@ config.vars
 external/libbacktrace-build/
 external/libbacktrace.a
 external/libbacktrace.la
+external/libbtcrpc.a
 test/test_protocol
 test/test_sphinx
 tests/.pytest.restart

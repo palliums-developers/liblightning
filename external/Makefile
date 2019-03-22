@@ -3,7 +3,8 @@ SUBMODULES =					\
 	external/libwally-core			\
 	external/jsmn				\
 	external/libbase58			\
-	external/libbacktrace
+	external/libbacktrace       \
+	external/libbtcrpc
 
 LIBSODIUM_HEADERS := external/libsodium/src/libsodium/include/sodium.h
 LIBWALLY_HEADERS := external/libwally-core/include/wally_bip32.h		\
@@ -13,9 +14,10 @@ LIBSECP_HEADERS := external/libwally-core/src/secp256k1/include/secp256k1_ecdh.h
 		external/libwally-core/src/secp256k1/include/secp256k1.h
 JSMN_HEADERS := external/jsmn/jsmn.h
 LIBBASE58_HEADERS := external/libbase58/libbase58.h
+LIBBTCRPC_HEADERS := external/libbtcrpc/include/bitcoin-cli.h
 
-EXTERNAL_HEADERS := $(LIBSODIUM_HEADERS) $(LIBWALLY_HEADERS) $(LIBSECP_HEADERS) $(JSMN_HEADERS) $(LIBBASE58_HEADERS)
-EXTERNAL_LIBS := external/libwallycore.a external/libsecp256k1.a external/libjsmn.a external/libbacktrace.a
+EXTERNAL_HEADERS := $(LIBSODIUM_HEADERS) $(LIBWALLY_HEADERS) $(LIBSECP_HEADERS) $(JSMN_HEADERS) $(LIBBASE58_HEADERS) $(LIBBTCRPC_HEADERS)
+EXTERNAL_LIBS := external/libwallycore.a external/libsecp256k1.a external/libjsmn.a external/libbacktrace.a external/libbtcrpc.a
 
 EXTERNAL_INCLUDE_FLAGS :=					\
 	-I external/libwally-core/include/			\
@@ -62,6 +64,9 @@ external/libsecp256k1.% external/libwallycore.%: external/libwally-core/src/secp
 external/libwally-core/src/libwallycore.% external/libwally-core/src/secp256k1/libsecp256k1.%: $(LIBWALLY_HEADERS) $(LIBSECP_HEADERS)
 	cd external/libwally-core && ./tools/autogen.sh && ./configure CC="$(CC)" --enable-static=yes --host="$(MAKE_HOST)" --build="$(BUILD)" --enable-module-recovery --enable-shared=no --prefix=/ --libdir=/ && $(MAKE)
 
+external/libbtcrpc.a: $(LIBBTCRPC_HEADERS)
+	cd external/libbtcrpc && ./autogen.sh && ./configure && $(MAKE) && pwd && cp ./src/libbtcrpc.a ../
+
 external/jsmn/jsmn.h: submodcheck
 
 # If we tell Make that the above builds both, it runs it twice in
@@ -104,6 +109,7 @@ external-clean:
 	if [ -f external/libsodium/Makefile ]; then make -C external/libsodium clean; fi
 	if [ -f external/libwally-core/Makefile ]; then make -C external/libwally-core clean; fi
 	if [ -f external/ibwally-core/src/Makefile ]; then make -C external/libwally-core/src clean; fi
+	if [ -f external/libbtcprc/Makefile ]; then make -C external/libbtcprc clean; fi
 
 external-distclean:
 	make -C external/libsodium distclean || true
