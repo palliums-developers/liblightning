@@ -34,11 +34,6 @@
 static void add_arg(const char ***args, const char *arg)
 {
 	tal_arr_expand(args, arg);
-	char buffer[1000] = {0};
-	char *argv[4] = {
-	    "", "-datadir=/root/workdir/data/lnconf", "getblock",
-	    "00000000119dbb8a2449f2a9b249e95cb995c6233c170d3f3e2c383ab58825f8"};
-	bcli_interface(4, argv, buffer, 900);
 }
 
 static const char **gather_args(const struct bitcoind *bitcoind,
