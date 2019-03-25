@@ -194,9 +194,9 @@ CONFIGURATOR_CC := $(CC)
 
 LDFLAGS = $(PIE_LDFLAGS) $(SANITIZER_FLAGS)
 ifeq ($(STATIC),1)
-LDLIBS = -L/usr/local/lib -Wl,-dn -levent -lcrypto -lgmp -lsqlite3 -lz -Wl,-dy -lm -lpthread -ldl $(COVFLAGS)
+LDLIBS = -L/usr/local/lib -Wl,-dn -levent -lpthread -lcrypto -lgmp -lsqlite3 -lz -Wl,-dy -lm -lpthread -ldl $(COVFLAGS)
 else
-LDLIBS = -L/usr/local/lib -levent -lcrypto -lm -lgmp -lsqlite3 -lz $(COVFLAGS)
+LDLIBS = -L/usr/local/lib -levent -lpthread -lcrypto -lm -lgmp -lsqlite3 -lz $(COVFLAGS)
 endif
 
 default: all-programs all-test-programs
