@@ -226,6 +226,7 @@ done:
 struct thread_bcli_arg{
 	int fd;
 	struct bitcoind * btcd;
+	struct bitcoin_cli *bcli;
 	char **argv;
 };
 
@@ -253,7 +254,8 @@ static void *thread_bcli_req(void *arg)
 	bcli_interface(argc, (char **)tba->argv, thread_buf, BUFFER_SIZE);
 	if (!strncmp(thread_buf, "error: Could not connect to the server", 38))
 		fatal_bitcoind_failure(thread_buf);
-	io_new_conn(tba->btcd, tba->fd, bcli_writer, thread_buf);
+	struct io_conn *conn = io_new_conn(tba->btcd, tba->fd, bcli_writer, thread_buf);
+	io_set_finish(conn, bcli_finished, tba->bcli);
 	return NULL;
 }
 
@@ -265,7 +267,7 @@ static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 		return;
 	running_flag = true;	
 	struct bitcoin_cli *bcli;
-	struct io_conn *conn;
+	// struct io_conn *conn;
 
 	if (bitcoind->num_requests[prio] >= BITCOIND_MAX_PARALLEL)
 		return;
@@ -281,6 +283,7 @@ static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 	tba->fd = fds[1];
 	tba->argv = cast_const2(char **, bcli->args);
 	tba->btcd = bitcoind;
+	tba->bcli = bcli;
 	pthread_t thread;
 	pthread_create(&thread, NULL, thread_bcli_req, (void *)tba);
 
@@ -288,8 +291,7 @@ static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 
 	bitcoind->num_requests[prio]++;
 
-	conn = notleak(io_new_conn(bitcoind, fds[0], output_init, bcli));
-	io_set_finish(conn, bcli_finished, bcli);
+	notleak(io_new_conn(bitcoind, fds[0], output_init, bcli));
 }
 
 static bool process_donothing(struct bitcoin_cli *bcli UNUSED)

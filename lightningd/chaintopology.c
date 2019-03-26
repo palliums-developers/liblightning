@@ -879,7 +879,7 @@ void setup_topology(struct chain_topology *topo,
 
 	tal_add_destructor(topo, destroy_chain_topology);
 
-	start_fee_estimate(topo);
+	// start_fee_estimate(topo);
 
 	/* Once it gets initial block, it calls io_break() and we return. */
 	io_loop(NULL, NULL);
