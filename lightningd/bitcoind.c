@@ -21,10 +21,6 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <lightningd/chaintopology.h>
-#include <bitcoin-cli.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <pthread.h>
 
 /* Bitcoind's web server has a default of 4 threads, with queue depth 16.
  * It will *fail* rather than queue beyond that, so we must not stress it!
@@ -221,53 +217,10 @@ done:
 	next_bcli(bitcoind, prio);
 }
 
-#define BUFFER_SIZE		(256)
-
-struct thread_bcli_arg{
-	int fd;
-	struct bitcoind * btcd;
-	struct bitcoin_cli *bcli;
-	char **argv;
-};
-
-static void fatal_bitcoind_failure(const char *error_message)
-{
-	fprintf(stderr, "%s\n\n", error_message);
-	fprintf(stderr, "Make sure you have bitcoind running and that bitcoin-cli is able to connect to bitcoind.\n\n");
-	fprintf(stderr, "You can verify that your Bitcoin Core installation is ready for use by running:\n\n");
-	fprintf(stderr, "    $ ");
-	exit(1);
-}
-
-static struct io_plan *bcli_writer(struct io_conn *conn, char *buffer)
-{
-	return io_write(conn, buffer, strlen(buffer), io_close_cb, NULL);
-}
-
-static void *thread_bcli_req(void *arg)
-{
-	struct thread_bcli_arg *tba = (struct thread_bcli_arg *)arg;
-	int argc = 0;
-	while (tba->argv[argc] != 0)
-		argc++;
-	char thread_buf[BUFFER_SIZE] = {0};
-	bcli_interface(argc, (char **)tba->argv, thread_buf, BUFFER_SIZE);
-	if (!strncmp(thread_buf, "error: Could not connect to the server", 38))
-		fatal_bitcoind_failure(thread_buf);
-	struct io_conn *conn = io_new_conn(tba->btcd, tba->fd, bcli_writer, thread_buf);
-	io_set_finish(conn, bcli_finished, tba->bcli);
-	return NULL;
-}
-
-bool running_flag = false;
-
 static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 {
-	if(running_flag)
-		return;
-	running_flag = true;	
 	struct bitcoin_cli *bcli;
-	// struct io_conn *conn;
+	struct io_conn *conn;
 
 	if (bitcoind->num_requests[prio] >= BITCOIND_MAX_PARALLEL)
 		return;
@@ -275,23 +228,19 @@ static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 	bcli = list_pop(&bitcoind->pending[prio], struct bitcoin_cli, list);
 	if (!bcli)
 		return;
-	int fds[2];
-	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, fds) != 0) {
-		fatal("Could not create bcli socketpair");
-	}
-	struct thread_bcli_arg *tba = tal(bitcoind, struct thread_bcli_arg);
-	tba->fd = fds[1];
-	tba->argv = cast_const2(char **, bcli->args);
-	tba->btcd = bitcoind;
-	tba->bcli = bcli;
-	pthread_t thread;
-	pthread_create(&thread, NULL, thread_bcli_req, (void *)tba);
+
+	bcli->pid = pipecmdarr(NULL, &bcli->fd, &bcli->fd,
+			       cast_const2(char **, bcli->args));
+	if (bcli->pid < 0)
+		fatal("%s exec failed: %s", bcli->args[0], strerror(errno));
 
 	bcli->start = time_now();
 
 	bitcoind->num_requests[prio]++;
 
-	notleak(io_new_conn(bitcoind, fds[0], output_init, bcli));
+	/* This lifetime is attached to bitcoind command fd */
+	conn = notleak(io_new_conn(bitcoind, bcli->fd, output_init, bcli));
+	io_set_finish(conn, bcli_finished, bcli);
 }
 
 static bool process_donothing(struct bitcoin_cli *bcli UNUSED)
@@ -558,8 +507,6 @@ void bitcoind_getblockcount_(struct bitcoind *bitcoind,
 			  "getblockcount", NULL);
 }
 
-
-
 struct get_output {
 	unsigned int blocknum, txnum, outnum;
 
@@ -824,6 +771,86 @@ static void destroy_bitcoind(struct bitcoind *bitcoind)
 	bitcoind->shutdown = true;
 }
 
+static const char **cmdarr(const tal_t *ctx, const struct bitcoind *bitcoind,
+			   const char *cmd, ...)
+{
+	va_list ap;
+	const char **args;
+
+	va_start(ap, cmd);
+	args = gather_args(bitcoind, ctx, cmd, ap);
+	va_end(ap);
+	return args;
+}
+
+static void fatal_bitcoind_failure(struct bitcoind *bitcoind, const char *error_message)
+{
+	size_t i;
+	const char **cmd = cmdarr(bitcoind, bitcoind, "echo", NULL);
+
+	fprintf(stderr, "%s\n\n", error_message);
+	fprintf(stderr, "Make sure you have bitcoind running and that bitcoin-cli is able to connect to bitcoind.\n\n");
+	fprintf(stderr, "You can verify that your Bitcoin Core installation is ready for use by running:\n\n");
+	fprintf(stderr, "    $ ");
+	for (i = 0; cmd[i]; i++) {
+		fprintf(stderr, "%s ", cmd[i]);
+	}
+	fprintf(stderr, "'hello world'\n");
+	tal_free(cmd);
+	exit(1);
+}
+
+void wait_for_bitcoind(struct bitcoind *bitcoind)
+{
+	int from, status, ret;
+	pid_t child;
+	const char **cmd = cmdarr(bitcoind, bitcoind, "echo", NULL);
+	bool printed = false;
+
+	for (;;) {
+		child = pipecmdarr(NULL, &from, &from, cast_const2(char **,cmd));
+		if (child < 0) {
+			if (errno == ENOENT) {
+				fatal_bitcoind_failure(bitcoind, "bitcoin-cli not found. Is bitcoin-cli (part of Bitcoin Core) available in your PATH?");
+			}
+			fatal("%s exec failed: %s", cmd[0], strerror(errno));
+		}
+
+		char *output = grab_fd(cmd, from);
+		if (!output)
+			fatal("Reading from %s failed: %s",
+			      cmd[0], strerror(errno));
+
+		while ((ret = waitpid(child, &status, 0)) < 0 && errno == EINTR);
+		if (ret != child)
+			fatal("Waiting for %s: %s", cmd[0], strerror(errno));
+		if (!WIFEXITED(status))
+			fatal("Death of %s: signal %i",
+			      cmd[0], WTERMSIG(status));
+
+		if (WEXITSTATUS(status) == 0)
+			break;
+
+		/* bitcoin/src/rpc/protocol.h:
+		 *	RPC_IN_WARMUP = -28, //!< Client still warming up
+		 */
+		if (WEXITSTATUS(status) != 28) {
+			if (WEXITSTATUS(status) == 1) {
+				fatal_bitcoind_failure(bitcoind, "Could not connect to bitcoind using bitcoin-cli. Is bitcoind running?");
+			}
+			fatal("%s exited with code %i: %s",
+			      cmd[0], WEXITSTATUS(status), output);
+		}
+
+		if (!printed) {
+			log_unusual(bitcoind->log,
+				    "Waiting for bitcoind to warm up...");
+			printed = true;
+		}
+		sleep(1);
+	}
+	tal_free(cmd);
+}
 
 struct bitcoind *new_bitcoind(const tal_t *ctx,
 			      struct lightningd *ld,

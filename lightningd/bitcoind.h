@@ -67,6 +67,8 @@ struct bitcoind *new_bitcoind(const tal_t *ctx,
 			      struct lightningd *ld,
 			      struct log *log);
 
+void wait_for_bitcoind(struct bitcoind *bitcoind);
+
 void bitcoind_estimate_fees_(struct bitcoind *bitcoind,
 			     const u32 blocks[], const char *estmode[],
 			     size_t num_estimates,
