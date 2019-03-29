@@ -78,7 +78,6 @@ struct bitcoin_cli {
 	struct bitcoind *bitcoind;
 	int fd;
 	int *exitstatus;
-	pid_t pid;
 	const char **args;
 	struct timeabs start;
 	enum bitcoind_prio prio;
@@ -175,28 +174,7 @@ static void bcli_finished(struct io_conn *conn UNUSED, struct bitcoin_cli *bcli)
 
 	assert(bitcoind->num_requests[prio] > 0);
 
-	/* FIXME: If we waited for SIGCHILD, this could never hang! */
-	while ((ret = waitpid(bcli->pid, &status, 0)) < 0 && errno == EINTR);
-	if (ret != bcli->pid)
-		fatal("%s %s", bcli_args(tmpctx, bcli),
-		      ret == 0 ? "not exited?" : strerror(errno));
-
-	if (!WIFEXITED(status))
-		fatal("%s died with signal %i",
-		      bcli_args(tmpctx, bcli),
-		      WTERMSIG(status));
-
-	if (!bcli->exitstatus) {
-		if (WEXITSTATUS(status) != 0) {
-			bcli_failure(bitcoind, bcli, WEXITSTATUS(status));
-			bitcoind->num_requests[prio]--;
-			goto done;
-		}
-	} else
-		*bcli->exitstatus = WEXITSTATUS(status);
-
-	if (WEXITSTATUS(status) == 0)
-		bitcoind->error_count = 0;
+	bitcoind->error_count = 0;
 
 	bitcoind->num_requests[bcli->prio]--;
 
@@ -217,6 +195,29 @@ done:
 	next_bcli(bitcoind, prio);
 }
 
+struct bcli_req_arg
+{
+	int fd;
+	void **argv;
+};
+
+
+void *bcli_req(void *arg)
+{
+	struct bcli_req_arg *bcli_arg = (struct bcli_req_arg *)arg;
+	int argc=0;
+	while(bcli_arg->argv[argc] != 0)
+		argc++;
+	char buffer[200] = {0};
+	bcli_interface(argc, bcli_arg->argv, buffer, 200);
+	strcat(buffer, "\n");
+	printf(buffer);
+	printf("\n");
+	fflush(stdout);
+	write(bcli_arg->fd, buffer, strlen(buffer));
+	close(bcli_arg->fd);
+}
+
 static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 {
 	struct bitcoin_cli *bcli;
@@ -229,11 +230,19 @@ static void next_bcli(struct bitcoind *bitcoind, enum bitcoind_prio prio)
 	if (!bcli)
 		return;
 
-	bcli->pid = pipecmdarr(NULL, &bcli->fd, &bcli->fd,
-			       cast_const2(char **, bcli->args));
-	if (bcli->pid < 0)
-		fatal("%s exec failed: %s", bcli->args[0], strerror(errno));
+	int fd[2];
+	if (pipe(fd) < 0) {
+		fatal("pipe error!\n");
+	}
 
+// create a new thread
+	struct bcli_req_arg *bcli_arg = tal(bitcoind, struct bcli_req_arg);
+	bcli_arg->fd = fd[1];
+	bcli_arg->argv = bcli->args;
+	pthread_t tid = 0;
+	pthread_create(&tid, NULL, bcli_req, bcli_arg);
+
+	bcli->fd = fd[0];
 	bcli->start = time_now();
 
 	bitcoind->num_requests[prio]++;
@@ -802,53 +811,16 @@ static void fatal_bitcoind_failure(struct bitcoind *bitcoind, const char *error_
 
 void wait_for_bitcoind(struct bitcoind *bitcoind)
 {
-	int from, status, ret;
-	pid_t child;
 	const char **cmd = cmdarr(bitcoind, bitcoind, "echo", NULL);
-	bool printed = false;
+	char buffer[200] = {0};
+	int argc = 0;
+	while (cmd[argc] != 0)
+		argc++;
+	bcli_interface(argc, cmd, buffer, 200);
+		const char* err_info="error: Could not connect to the server";
+	if (!strncmp(buffer, err_info, strlen(err_info) - 1))
+		fatal(buffer);
 
-	for (;;) {
-		child = pipecmdarr(NULL, &from, &from, cast_const2(char **,cmd));
-		if (child < 0) {
-			if (errno == ENOENT) {
-				fatal_bitcoind_failure(bitcoind, "bitcoin-cli not found. Is bitcoin-cli (part of Bitcoin Core) available in your PATH?");
-			}
-			fatal("%s exec failed: %s", cmd[0], strerror(errno));
-		}
-
-		char *output = grab_fd(cmd, from);
-		if (!output)
-			fatal("Reading from %s failed: %s",
-			      cmd[0], strerror(errno));
-
-		while ((ret = waitpid(child, &status, 0)) < 0 && errno == EINTR);
-		if (ret != child)
-			fatal("Waiting for %s: %s", cmd[0], strerror(errno));
-		if (!WIFEXITED(status))
-			fatal("Death of %s: signal %i",
-			      cmd[0], WTERMSIG(status));
-
-		if (WEXITSTATUS(status) == 0)
-			break;
-
-		/* bitcoin/src/rpc/protocol.h:
-		 *	RPC_IN_WARMUP = -28, //!< Client still warming up
-		 */
-		if (WEXITSTATUS(status) != 28) {
-			if (WEXITSTATUS(status) == 1) {
-				fatal_bitcoind_failure(bitcoind, "Could not connect to bitcoind using bitcoin-cli. Is bitcoind running?");
-			}
-			fatal("%s exited with code %i: %s",
-			      cmd[0], WEXITSTATUS(status), output);
-		}
-
-		if (!printed) {
-			log_unusual(bitcoind->log,
-				    "Waiting for bitcoind to warm up...");
-			printed = true;
-		}
-		sleep(1);
-	}
 	tal_free(cmd);
 }
 
