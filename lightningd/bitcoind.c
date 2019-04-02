@@ -166,6 +166,8 @@ static void bcli_finished(struct io_conn *conn UNUSED, struct bitcoin_cli *bcli)
 	bool ok;
 	u64 msec = time_to_msec(time_between(time_now(), bcli->start));
 
+	printf("bcli_finished cli = %s\n",bcli->args[3]);
+	printf("bcli_finished datalen = %d, data = %s\n", bcli->output_bytes, bcli->output);
 	/* If it took over 10 seconds, that's rather strange. */
 	if (msec > 10000)
 		log_unusual(bitcoind->log,
@@ -174,6 +176,7 @@ static void bcli_finished(struct io_conn *conn UNUSED, struct bitcoin_cli *bcli)
 
 	assert(bitcoind->num_requests[prio] > 0);
 
+	bcli->exitstatus = 0;
 	bitcoind->error_count = 0;
 
 	bitcoind->num_requests[bcli->prio]--;
@@ -206,15 +209,10 @@ void *bcli_req(void *arg)
 {
 	struct bcli_req_arg *bcli_arg = (struct bcli_req_arg *)arg;
 	int argc=0;
-	while(bcli_arg->argv[argc] != 0)
+	while(bcli_arg->argv[argc] != 0){
 		argc++;
-	char buffer[200] = {0};
-	bcli_interface(argc, bcli_arg->argv, buffer, 200);
-	strcat(buffer, "\n");
-	printf(buffer);
-	printf("\n");
-	fflush(stdout);
-	write(bcli_arg->fd, buffer, strlen(buffer));
+	}
+	bcli_interface(argc, bcli_arg->argv, bcli_arg->fd);
 	close(bcli_arg->fd);
 }
 
@@ -812,13 +810,20 @@ static void fatal_bitcoind_failure(struct bitcoind *bitcoind, const char *error_
 void wait_for_bitcoind(struct bitcoind *bitcoind)
 {
 	const char **cmd = cmdarr(bitcoind, bitcoind, "echo", NULL);
-	char buffer[200] = {0};
+	char buffer[20] = {0};
 	int argc = 0;
 	while (cmd[argc] != 0)
 		argc++;
-	bcli_interface(argc, cmd, buffer, 200);
-		const char* err_info="error: Could not connect to the server";
-	if (!strncmp(buffer, err_info, strlen(err_info) - 1))
+	int fd[2];
+	if (pipe(fd) < 0) {
+		fatal("pipe error!\n");
+	}
+
+	bcli_interface(argc, cmd, fd[1]);
+	char buf[100] = {0};
+	int size = read(fd[0], buf, 100);
+	const char *err_info = "error: Could not connect to the server";
+	if (!strncmp(buf, err_info, strlen(err_info) - 1))
 		fatal(buffer);
 
 	tal_free(cmd);
