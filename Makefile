@@ -484,7 +484,6 @@ PKGLIBEXEC_PROGRAMS = \
 	       lightningd/lightning_closingd \
 	       lightningd/lightning_connectd \
 	       lightningd/lightning_gossipd \
-	       lightningd/lightning_hsmd \
 	       lightningd/lightning_onchaind \
 	       lightningd/lightning_openingd
 PLUGINS=plugins/pay

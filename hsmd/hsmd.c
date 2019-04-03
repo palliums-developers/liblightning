@@ -52,6 +52,7 @@
 #include <wally_bip32.h>
 #include <wire/gen_peer_wire.h>
 #include <wire/wire_io.h>
+#include <hsmd/hsmd.h>
 
 /*~ Each subdaemon is started with stdin connected to lightningd (for status
  * messages), and stderr untouched (for emergency printing).  File descriptors
@@ -1767,11 +1768,9 @@ static void master_gone(struct io_conn *unused UNUSED, struct client *c UNUSED)
 	exit(2);
 }
 
-int main(int argc, char *argv[])
+int start_hsmd(int argc, char *argv[])
 {
 	struct client *master;
-
-	setup_locale();
 
 	/* This sets up tmpctx, various DEVELOPER options, backtraces, etc. */
 	subdaemon_setup(argc, argv);

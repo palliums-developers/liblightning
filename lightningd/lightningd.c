@@ -78,6 +78,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <hsmd/hsmd.h>
 
 /*~ The core lightning object: it's passed everywhere, and is basically a
  * global variable.  This new_xxx pattern is something we'll see often:

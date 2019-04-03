@@ -4,11 +4,10 @@
 hsmd-wrongdir:
 	$(MAKE) -C .. lightningd/hsm-all
 
-default: hsmd-all
-
 LIGHTNINGD_HSM_SRC := hsmd/hsmd.c	\
 	hsmd/gen_hsm_wire.c
-LIGHTNINGD_HSM_HEADERS := hsmd/gen_hsm_wire.h
+LIGHTNINGD_HSM_HEADERS := hsmd/gen_hsm_wire.h \
+						  hsmd/hsmd.h
 LIGHTNINGD_HSM_OBJS := $(LIGHTNINGD_HSM_SRC:.c=.o)
 
 # Common source we use.
@@ -42,12 +41,7 @@ $(LIGHTNINGD_HSM_OBJS): $(LIGHTNINGD_HEADERS)
 
 # Make sure these depend on everything.
 ALL_OBJS += $(LIGHTNINGD_HSM_OBJS)
-ALL_PROGRAMS += lightningd/lightning_hsmd
 ALL_GEN_HEADERS += hsmd/gen_hsm_wire.h
-
-hsmd-all: lightningd/lightning_hsmd
-
-lightningd/lightning_hsmd: $(LIGHTNINGD_HSM_OBJS) $(LIGHTNINGD_LIB_OBJS) $(HSMD_COMMON_OBJS) $(BITCOIN_OBJS) $(WIRE_OBJS)
 
 hsmd/gen_hsm_wire.h: $(WIRE_GEN) hsmd/hsm_wire.csv
 	$(WIRE_GEN) --header $@ hsm_wire_type < hsmd/hsm_wire.csv > $@
