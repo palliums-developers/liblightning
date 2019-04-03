@@ -19,6 +19,7 @@
 #include <common/timeout.h>
 #include <common/utils.h>
 #include <errno.h>
+#include <string.h>
 #include <inttypes.h>
 #include <lightningd/chaintopology.h>
 
@@ -166,8 +167,6 @@ static void bcli_finished(struct io_conn *conn UNUSED, struct bitcoin_cli *bcli)
 	bool ok;
 	u64 msec = time_to_msec(time_between(time_now(), bcli->start));
 
-	printf("bcli_finished cli = %s\n",bcli->args[3]);
-	printf("bcli_finished datalen = %d, data = %s\n", bcli->output_bytes, bcli->output);
 	/* If it took over 10 seconds, that's rather strange. */
 	if (msec > 10000)
 		log_unusual(bitcoind->log,
@@ -176,7 +175,19 @@ static void bcli_finished(struct io_conn *conn UNUSED, struct bitcoin_cli *bcli)
 
 	assert(bitcoind->num_requests[prio] > 0);
 
-	bcli->exitstatus = 0;
+
+	if (bcli->exitstatus) {
+		if(bcli->output_bytes<100 && strstr(bcli->output, "error code"))
+		{
+			if(strstr(bcli->output, "error code: -8"))
+				*bcli->exitstatus = 8;
+			else
+				*bcli->exitstatus = 1;
+		}
+		else
+			*bcli->exitstatus = 0;
+	}
+
 	bitcoind->error_count = 0;
 
 	bitcoind->num_requests[bcli->prio]--;
